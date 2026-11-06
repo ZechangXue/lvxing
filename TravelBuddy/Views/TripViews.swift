@@ -119,7 +119,7 @@ struct TripEditorView: View {
             coverAttributionName="OpenAI · 小桃原创生成";coverAttributionURL=nil
             generationMessage="生成完成，已设为旅行封面。"
         } catch {
-            generationMessage="生成暂时不可用，将使用默认封面。"
+            generationMessage="生成失败：\(error.localizedDescription)"
         }
     }
 

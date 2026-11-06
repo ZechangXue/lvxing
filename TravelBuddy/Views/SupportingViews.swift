@@ -52,12 +52,14 @@ struct OpenAISettingsView:View{
     @State private var apiKey=""
     @State private var hasSavedKey=false
     @State private var message:String?
+    @State private var validating=false
     var body:some View{Form{
         Section{SecureField(hasSavedKey ? "输入新 Key 可替换现有 Key":"sk-…",text:$apiKey).textInputAutocapitalization(.never).autocorrectionDisabled();if hasSavedKey{Label("已在本机钥匙串中安全保存",systemImage:"checkmark.shield.fill").foregroundStyle(.green)}}header:{Text("OpenAI API Key")}footer:{Text("有可用 Key 时，新建旅程会优先生成同款小桃画风封面，并显示生成进度；没有 Key 或生成失败时自动使用默认封面。Key 不会提交到 GitHub。")}
-        Section{Link("打开 OpenAI API Keys 页面",destination:URL(string:"https://platform.openai.com/api-keys")!);if let message{Text(message).foregroundStyle(Pastel.secondary)}}
+        Section{Button{Task{await validate()}}label:{if validating{HStack{ProgressView();Text("正在验证图片模型权限…")}}else{Label("验证 API Key 与图片模型",systemImage:"checkmark.shield")}}.disabled(!hasSavedKey||validating);Link("打开 OpenAI API Keys 页面",destination:URL(string:"https://platform.openai.com/api-keys")!);if let message{Text(message).foregroundStyle(Pastel.secondary).textSelection(.enabled)}}
         if hasSavedKey{Section{Button("移除 API Key",role:.destructive){SecureStore.removeOpenAIKey();hasSavedKey=false;apiKey="";message="已移除，之后将使用默认封面。"}}}
     }.navigationTitle("OpenAI 图片生成").navigationBarTitleDisplayMode(.inline).toolbar{ToolbarItem(placement:.cancellationAction){Button("关闭"){dismiss()}};ToolbarItem(placement:.confirmationAction){Button("保存"){save()}.disabled(apiKey.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}}.onAppear{hasSavedKey=SecureStore.openAIKey() != nil}}
     private func save(){do{try SecureStore.saveOpenAIKey(apiKey.trimmingCharacters(in:.whitespacesAndNewlines));hasSavedKey=true;apiKey="";message="保存成功。下次新建旅程时会自动生成封面。"}catch{message=error.localizedDescription}}
+    @MainActor private func validate()async{validating=true;defer{validating=false};do{message=try await OpenAIImageService().validateImageAccess()}catch{message=error.localizedDescription}}
 }
 struct ProfileRow:View{let icon:String;let title:String;let subtitle:String;var body:some View{HStack(spacing:14){Image(systemName:icon).foregroundStyle(Pastel.peachStrong).frame(width:38,height:38).background(Pastel.yellow.opacity(0.55)).clipShape(Circle());VStack(alignment:.leading,spacing:3){Text(title).font(.headline).foregroundStyle(Pastel.text);Text(subtitle).font(.caption).foregroundStyle(Pastel.secondary)};Spacer()}.padding(14)}}
 
