@@ -19,7 +19,9 @@ jobs:
         shell: bash
         run: |
           set +e
-          xcodebuild test -project TravelBuddy.xcodeproj -scheme TravelBuddy -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild-test.log
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(device["udid"] for devices in data["devices"].values() for device in devices if device.get("isAvailable") and "iPhone" in device["name"]))')
+          echo "Using iPhone simulator: $simulator_id"
+          xcodebuild test -project TravelBuddy.xcodeproj -scheme TravelBuddy -destination "platform=iOS Simulator,id=$simulator_id" CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild-test.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             grep -E 'error:|fatal error:|Testing failed:|Unable to find a destination|XCTAssert' xcodebuild-test.log | tail -80 | while IFS= read -r line; do
