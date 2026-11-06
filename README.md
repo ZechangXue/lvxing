@@ -6,6 +6,7 @@
 
 - 多旅行创建、编辑、封面照片与自动日期生成；目的地不设白名单，可记录世界上任意城市、国家或景点
 - 在新建旅行时直接按目的地搜索代表性横图并设为封面，网络图片会下载到本机供离线查看
+- 可在“我的 → OpenAI 旅行封面”保存个人 API Key；有 Key 时新旅程优先生成统一小桃画风封面并显示进度，缺少 Key 或生成失败时自动使用默认封面
 - 按天列表 / 完整时间线、月历与旅行日期高亮
 - 上午、下午、晚上、饮食活动的新增、编辑、完成和删除
 - 餐食计划、MapKit 地点搜索与地图标记
@@ -38,6 +39,12 @@ open TravelBuddy.xcodeproj
 ## 在线图片配置
 
 在 Target 的 Info 配置中将 `UNSPLASH_ACCESS_KEY` 设为你的 Unsplash Access Key。配置后，目的地封面和相册搜索会优先使用相关度排序的横向旅行摄影；选择图片时会调用 Unsplash 要求的下载统计端点，并展示摄影师署名。Key 为空时自动改用维基百科代表图，也继续支持本地照片。不要把私密 Key 提交到公开仓库。
+
+OpenAI 封面无需修改工程文件：在 App 的“我的 → OpenAI 旅行封面”输入 API Key，Key 仅存储在当前 iPhone 的 Keychain，不会进入 SwiftData、Git 或 GitHub Actions。新建旅程且没有手动选择封面时，App 会调用 OpenAI Image API，以内置原创小桃封面作为风格参考生成目的地图片。API 调用可能产生费用，并受 OpenAI 账户用量与模型访问权限限制。
+
+## iPhone 全屏显示
+
+工程启用了系统生成的 `UILaunchScreen` 和现代 SwiftUI Scene Manifest，避免新款 iPhone 进入旧式兼容分辨率。升级此修复版本时，请先从 iPhone 删除旧版 TravelBuddy，再用 Sideloadly 安装新 IPA；iOS 会缓存旧 App 的启动画面与尺寸信息，直接覆盖安装可能仍显示旧黑边。
 
 ## 说明
 

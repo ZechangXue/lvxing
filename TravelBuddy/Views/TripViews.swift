@@ -41,6 +41,8 @@ struct TripEditorView: View {
     @State private var showingCoverSearch = false
     @State private var coverAttributionName: String?
     @State private var coverAttributionURL: String?
+    @State private var isGenerating = false
+    @State private var generationMessage: String?
 
     var body: some View {
         Form {
@@ -51,12 +53,25 @@ struct TripEditorView: View {
                 DatePicker("结束日期",selection:$end,in:start...,displayedComponents:.date)
             } header: { Text("基本信息") }
             Section {
-                coverPreview.frame(height:170).frame(maxWidth:.infinity).clipShape(RoundedRectangle(cornerRadius:18)).listRowInsets(EdgeInsets())
+                ZStack {
+                    coverPreview.frame(height:170).frame(maxWidth:.infinity)
+                    if isGenerating {
+                        Rectangle().fill(.black.opacity(0.36))
+                        VStack(spacing:10){ProgressView().tint(.white).scaleEffect(1.2);Text("正在为“\(destination)”生成小桃旅行封面…").font(.subheadline.weight(.semibold)).foregroundStyle(.white).multilineTextAlignment(.center)}.padding()
+                    }
+                }.frame(height:170).clipShape(RoundedRectangle(cornerRadius:18)).listRowInsets(EdgeInsets())
+                if SecureStore.openAIKey() != nil {
+                    Button { Task { await generateCover() } } label: { Label("用 OpenAI 重新生成同款封面",systemImage:"wand.and.stars") }
+                        .disabled(destination.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || isGenerating)
+                } else {
+                    Label("在“我的”中配置 OpenAI API Key 后可自动生成",systemImage:"key").font(.caption).foregroundStyle(Pastel.secondary)
+                }
                 Button { showingCoverSearch=true } label: { Label("搜索“\(destination.isEmpty ? "目的地" : destination)”的代表图片",systemImage:"globe.asia.australia.fill") }
-                    .disabled(destination.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                    .disabled(destination.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || isGenerating)
                 PhotosPicker(selection:$pickerItem,matching:.images) { Label("从手机照片图库选择",systemImage:"photo.on.rectangle") }
                 if let coverAttributionName { Text("图片来源：\(coverAttributionName)").font(.caption).foregroundStyle(Pastel.secondary) }
-            } header: { Text("旅行封面") } footer: { Text("可搜索世界上任何城市、国家或景点；选中的网络图片会保存到本机，离线也能显示。") }
+                if let generationMessage { Text(generationMessage).font(.caption).foregroundStyle(Pastel.secondary) }
+            } header: { Text("旅行封面") } footer: { Text("有 OpenAI API Key 时，新建旅程会优先自动生成；不可用时直接使用默认封面。生成结果保存到本机，离线也能显示。") }
             Section {
                 TextField("同行人（可选）",text:$companions)
                 TextField("写下这趟旅行的期待…",text:$details,axis:.vertical).lineLimit(3...6)
@@ -65,8 +80,8 @@ struct TripEditorView: View {
         .scrollContentBackground(.hidden).background(Pastel.background)
         .navigationTitle(trip == nil ? "新建旅行" : "编辑旅行").navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() } }
-            ToolbarItem(placement:.confirmationAction) { Button("保存",action:save).disabled(title.trimmingCharacters(in:.whitespaces).isEmpty || destination.isEmpty || end < start) }
+            ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() }.disabled(isGenerating) }
+            ToolbarItem(placement:.confirmationAction) { Button { Task { await save() } } label: { if isGenerating { ProgressView() } else { Text("保存") } }.disabled(title.trimmingCharacters(in:.whitespaces).isEmpty || destination.isEmpty || end < start || isGenerating) }
         }
         .task(id:pickerItem) {
             if let data=try? await pickerItem?.loadTransferable(type:Data.self) { imageData=data;coverAttributionName=nil;coverAttributionURL=nil }
@@ -93,7 +108,21 @@ struct TripEditorView: View {
         else { StoredOrAssetImage(path:nil,asset:"generic").scaledToFill() }
     }
 
-    private func save() {
+    @MainActor private func generateCover() async {
+        guard !destination.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return }
+        guard SecureStore.openAIKey() != nil else { generationMessage="未配置 API Key，将使用默认封面。";return }
+        isGenerating=true;generationMessage=nil;defer{isGenerating=false}
+        do {
+            imageData=try await OpenAIImageService().generateTravelCover(destination:destination)
+            coverAttributionName="OpenAI · 小桃原创生成";coverAttributionURL=nil
+            generationMessage="生成完成，已设为旅行封面。"
+        } catch {
+            generationMessage="生成暂时不可用，将使用默认封面。"
+        }
+    }
+
+    @MainActor private func save() async {
+        if trip == nil && imageData == nil && SecureStore.openAIKey() != nil { await generateCover() }
         let value = trip ?? Trip(title:title,destination:destination,startDate:start,endDate:end)
         let oldDays=value.days; value.title=title;value.destination=destination;value.startDate=start;value.endDate=end;value.tripDescription=details;value.companions=companions
         if let imageData { ImageStore.remove(named:value.coverImagePath); value.coverImagePath=try? ImageStore.save(imageData);value.coverAsset="generic" }

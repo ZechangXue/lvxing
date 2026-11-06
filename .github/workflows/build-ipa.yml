@@ -27,6 +27,8 @@ jobs:
             done
           fi
           exit "$status"
+      - name: 验证现代全屏启动配置
+        run: /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' DerivedData/Build/Products/Release-iphoneos/TravelBuddy.app/Info.plist
       - name: 打包未签名 IPA
         run: |
           mkdir -p Payload

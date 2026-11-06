@@ -27,6 +27,37 @@ struct FavoritesView:View{
 }
 struct FavoriteEditorView:View{@Environment(\.dismiss)private var dismiss;@Environment(\.modelContext)private var context;@State private var name="";@State private var category="景点";@State private var city="";@State private var notes="";var body:some View{Form{TextField("名称",text:$name);Picker("类型",selection:$category){ForEach(["景点","餐厅","活动","住宿","灵感"],id:\.self){Text($0)}};TextField("城市",text:$city);TextField("备注",text:$notes,axis:.vertical)}.navigationTitle("添加收藏").toolbar{ToolbarItem(placement:.cancellationAction){Button("取消"){dismiss()}};ToolbarItem(placement:.confirmationAction){Button("保存"){context.insert(FavoritePlace(name:name,category:category,city:city,notes:notes));try? context.save();dismiss()}.disabled(name.isEmpty)}}}}
 
-struct ProfileView:View{var body:some View{ScrollView{VStack(spacing:20){Image("pigMap").resizable().scaledToFit().frame(height:200);VStack(spacing:6){Text("小桃的旅行手账").font(.title.bold()).foregroundStyle(Pastel.text);Text("把每一段期待，都好好收藏").foregroundStyle(Pastel.secondary)};VStack(spacing:0){ProfileRow(icon:"icloud.and.arrow.down",title:"离线优先",subtitle:"核心行程保存在本机");Divider().padding(.leading,62);ProfileRow(icon:"photo",title:"在线图片",subtitle:"可在 Info.plist 配置 Unsplash Key");Divider().padding(.leading,62);ProfileRow(icon:"lock.shield",title:"隐私",subtitle:"无需账号，不上传旅行计划")}.pastelCard();Text("TravelBuddy 1.0").font(.caption).foregroundStyle(Pastel.secondary)}.padding(22)}.background(Pastel.background).navigationTitle("我的")}}
+struct ProfileView:View{
+    @State private var showingOpenAI=false
+    @State private var hasOpenAIKey=false
+    var body:some View{ScrollView{VStack(spacing:20){
+        Image("pigMap").resizable().scaledToFit().frame(height:200)
+        VStack(spacing:6){Text("小桃的旅行手账").font(.title.bold()).foregroundStyle(Pastel.text);Text("把每一段期待，都好好收藏").foregroundStyle(Pastel.secondary)}
+        VStack(spacing:0){
+            Button{showingOpenAI=true}label:{HStack{ProfileRow(icon:"wand.and.stars",title:"OpenAI 旅行封面",subtitle:hasOpenAIKey ? "已配置 · 新旅程优先自动生成":"未配置 · 使用默认封面");Image(systemName:"chevron.right").foregroundStyle(Pastel.secondary).padding(.trailing,14)}}.buttonStyle(.plain)
+            Divider().padding(.leading,62)
+            ProfileRow(icon:"icloud.and.arrow.down",title:"离线优先",subtitle:"生成结果与核心行程保存在本机")
+            Divider().padding(.leading,62)
+            ProfileRow(icon:"lock.shield",title:"隐私",subtitle:"API Key 仅保存在本机钥匙串")
+        }.pastelCard()
+        Text("TravelBuddy 1.1").font(.caption).foregroundStyle(Pastel.secondary)
+    }.padding(22)}.background(Pastel.background).navigationTitle("我的")
+        .onAppear{hasOpenAIKey=SecureStore.openAIKey() != nil}
+        .sheet(isPresented:$showingOpenAI,onDismiss:{hasOpenAIKey=SecureStore.openAIKey() != nil}){NavigationStack{OpenAISettingsView()}}
+    }
+}
+
+struct OpenAISettingsView:View{
+    @Environment(\.dismiss)private var dismiss
+    @State private var apiKey=""
+    @State private var hasSavedKey=false
+    @State private var message:String?
+    var body:some View{Form{
+        Section{SecureField(hasSavedKey ? "输入新 Key 可替换现有 Key":"sk-…",text:$apiKey).textInputAutocapitalization(.never).autocorrectionDisabled();if hasSavedKey{Label("已在本机钥匙串中安全保存",systemImage:"checkmark.shield.fill").foregroundStyle(.green)}}header:{Text("OpenAI API Key")}footer:{Text("有可用 Key 时，新建旅程会优先生成同款小桃画风封面，并显示生成进度；没有 Key 或生成失败时自动使用默认封面。Key 不会提交到 GitHub。")}
+        Section{Link("打开 OpenAI API Keys 页面",destination:URL(string:"https://platform.openai.com/api-keys")!);if let message{Text(message).foregroundStyle(Pastel.secondary)}}
+        if hasSavedKey{Section{Button("移除 API Key",role:.destructive){SecureStore.removeOpenAIKey();hasSavedKey=false;apiKey="";message="已移除，之后将使用默认封面。"}}}
+    }.navigationTitle("OpenAI 图片生成").navigationBarTitleDisplayMode(.inline).toolbar{ToolbarItem(placement:.cancellationAction){Button("关闭"){dismiss()}};ToolbarItem(placement:.confirmationAction){Button("保存"){save()}.disabled(apiKey.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}}.onAppear{hasSavedKey=SecureStore.openAIKey() != nil}}
+    private func save(){do{try SecureStore.saveOpenAIKey(apiKey.trimmingCharacters(in:.whitespacesAndNewlines));hasSavedKey=true;apiKey="";message="保存成功。下次新建旅程时会自动生成封面。"}catch{message=error.localizedDescription}}
+}
 struct ProfileRow:View{let icon:String;let title:String;let subtitle:String;var body:some View{HStack(spacing:14){Image(systemName:icon).foregroundStyle(Pastel.peachStrong).frame(width:38,height:38).background(Pastel.yellow.opacity(0.55)).clipShape(Circle());VStack(alignment:.leading,spacing:3){Text(title).font(.headline).foregroundStyle(Pastel.text);Text(subtitle).font(.caption).foregroundStyle(Pastel.secondary)};Spacer()}.padding(14)}}
 
