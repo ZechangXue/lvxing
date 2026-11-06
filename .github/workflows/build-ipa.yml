@@ -1,0 +1,37 @@
+name: 构建 TravelBuddy IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+      - name: 静态检查与单元测试
+        run: xcodebuild test -project TravelBuddy.xcodeproj -scheme TravelBuddy -destination 'platform=iOS Simulator,name=iPhone 16 Pro' CODE_SIGNING_ALLOWED=NO
+      - name: 编译 iPhone Release App
+        run: xcodebuild -project TravelBuddy.xcodeproj -scheme TravelBuddy -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: 打包未签名 IPA
+        run: |
+          mkdir -p Payload
+          cp -R DerivedData/Build/Products/Release-iphoneos/TravelBuddy.app Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload TravelBuddy-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TravelBuddy-unsigned-IPA
+          path: TravelBuddy-unsigned.ipa
+      - name: 发布到 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TravelBuddy-unsigned.ipa
+          generate_release_notes: true
+

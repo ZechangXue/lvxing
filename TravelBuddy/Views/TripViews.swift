@@ -1,0 +1,122 @@
+import SwiftUI
+import SwiftData
+import PhotosUI
+import UIKit
+
+struct TripListView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort:\Trip.startDate) private var trips:[Trip]
+    @State private var showingEditor=false
+    @State private var filter=0
+    @State private var deleting:Trip?
+    var filtered:[Trip] { trips.filter { filter == 0 || (filter == 1 ? $0.endDate >= Date.now.startOfDay : $0.endDate < Date.now.startOfDay) } }
+    var body: some View {
+        ZStack(alignment:.bottomTrailing) {
+            Pastel.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment:.leading,spacing:18) {
+                    HStack { VStack(alignment:.leading,spacing:2) { Text("我的旅行").font(.largeTitle.bold()).foregroundStyle(Pastel.text); Text("和小桃一起，把期待装进行李箱").font(.subheadline).foregroundStyle(Pastel.secondary) }; Spacer(); Image("pigMap").resizable().scaledToFit().frame(width:76,height:76) }
+                    Picker("旅行筛选",selection:$filter) { Text("全部").tag(0);Text("待出发").tag(1);Text("回忆").tag(2) }.pickerStyle(.segmented)
+                    if filtered.isEmpty { EmptyStateView(title:"还没有旅行",message:"先选一个想去的地方，小桃会陪你慢慢计划。",buttonTitle:"创建旅行",action:{showingEditor=true}) }
+                    ForEach(filtered) { trip in NavigationLink { TripOverviewView(trip:trip) } label:{ TravelCard(trip:trip) }.buttonStyle(.plain).contextMenu { Button(role:.destructive) { deleting=trip } label:{ Label("删除",systemImage:"trash") } } }
+                }.padding(18).padding(.bottom,70)
+            }
+            RoundedIconButton(icon:"plus",color:Pastel.yellow) { showingEditor=true }.padding(22)
+        }.toolbar(.hidden,for:.navigationBar).sheet(isPresented:$showingEditor) { NavigationStack { TripEditorView() } }.confirmationDialog("要删除“\(deleting?.title ?? "这趟旅行")”吗？",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}}),titleVisibility:.visible){Button("删除旅行",role:.destructive){if let deleting{context.delete(deleting);try? context.save()};deleting=nil};Button("取消",role:.cancel){deleting=nil}}message:{Text("相关日程、餐食和本地记录也会被删除，此操作无法撤销。")}
+    }
+}
+
+struct TripEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    var trip: Trip? = nil
+    @State private var title = ""
+    @State private var destination = ""
+    @State private var start = Date.now
+    @State private var end = Calendar.current.date(byAdding:.day,value:2,to:.now)!
+    @State private var details = ""
+    @State private var companions = ""
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var imageData: Data?
+    @State private var showingCoverSearch = false
+    @State private var coverAttributionName: String?
+    @State private var coverAttributionURL: String?
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("例如：冰岛极光之旅",text:$title)
+                TextField("任意目的地，例如：雷克雅未克",text:$destination)
+                DatePicker("出发日期",selection:$start,displayedComponents:.date)
+                DatePicker("结束日期",selection:$end,in:start...,displayedComponents:.date)
+            } header: { Text("基本信息") }
+            Section {
+                coverPreview.frame(height:170).frame(maxWidth:.infinity).clipShape(RoundedRectangle(cornerRadius:18)).listRowInsets(EdgeInsets())
+                Button { showingCoverSearch=true } label: { Label("搜索“\(destination.isEmpty ? "目的地" : destination)”的代表图片",systemImage:"globe.asia.australia.fill") }
+                    .disabled(destination.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                PhotosPicker(selection:$pickerItem,matching:.images) { Label("从手机照片图库选择",systemImage:"photo.on.rectangle") }
+                if let coverAttributionName { Text("图片来源：\(coverAttributionName)").font(.caption).foregroundStyle(Pastel.secondary) }
+            } header: { Text("旅行封面") } footer: { Text("可搜索世界上任何城市、国家或景点；选中的网络图片会保存到本机，离线也能显示。") }
+            Section {
+                TextField("同行人（可选）",text:$companions)
+                TextField("写下这趟旅行的期待…",text:$details,axis:.vertical).lineLimit(3...6)
+            } header: { Text("让旅行更特别") }
+        }
+        .scrollContentBackground(.hidden).background(Pastel.background)
+        .navigationTitle(trip == nil ? "新建旅行" : "编辑旅行").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() } }
+            ToolbarItem(placement:.confirmationAction) { Button("保存",action:save).disabled(title.trimmingCharacters(in:.whitespaces).isEmpty || destination.isEmpty || end < start) }
+        }
+        .task(id:pickerItem) {
+            if let data=try? await pickerItem?.loadTransferable(type:Data.self) { imageData=data;coverAttributionName=nil;coverAttributionURL=nil }
+        }
+        .sheet(isPresented:$showingCoverSearch) {
+            NavigationStack {
+                DestinationCoverPicker(initialQuery:destination) { data,photo in
+                    imageData=data;coverAttributionName=photo.attributionName;coverAttributionURL=photo.attributionURL.absoluteString
+                }
+            }
+        }
+        .onAppear {
+            if let trip {
+                title=trip.title;destination=trip.destination;start=trip.startDate;end=trip.endDate
+                details=trip.tripDescription;companions=trip.companions
+                coverAttributionName=trip.coverAttributionName;coverAttributionURL=trip.coverAttributionURL
+            }
+        }
+    }
+
+    @ViewBuilder private var coverPreview: some View {
+        if let imageData,let image=UIImage(data:imageData) { Image(uiImage:image).resizable().scaledToFill() }
+        else if let trip { StoredOrAssetImage(path:trip.coverImagePath,asset:trip.coverAsset).scaledToFill() }
+        else { StoredOrAssetImage(path:nil,asset:"generic").scaledToFill() }
+    }
+
+    private func save() {
+        let value = trip ?? Trip(title:title,destination:destination,startDate:start,endDate:end)
+        let oldDays=value.days; value.title=title;value.destination=destination;value.startDate=start;value.endDate=end;value.tripDescription=details;value.companions=companions
+        if let imageData { ImageStore.remove(named:value.coverImagePath); value.coverImagePath=try? ImageStore.save(imageData);value.coverAsset="generic" }
+        value.coverAttributionName=coverAttributionName;value.coverAttributionURL=coverAttributionURL
+        ItineraryFactory.synchronizeDays(for:value,oldDays:oldDays);if trip == nil { context.insert(value) };try? context.save();dismiss()
+    }
+}
+
+struct TripOverviewView: View {
+    @Environment(\.modelContext) private var context; @Bindable var trip:Trip
+    @State private var mode=0;@State private var edit=false
+    var body: some View {
+        ScrollView { VStack(alignment:.leading,spacing:20) {
+            ZStack(alignment:.bottomLeading) { StoredOrAssetImage(path:trip.coverImagePath,asset:trip.coverAsset).scaledToFill().frame(height:235).clipped(); LinearGradient(colors:[.clear,.black.opacity(0.68)],startPoint:.center,endPoint:.bottom); VStack(alignment:.leading,spacing:5){Text(trip.title).font(.largeTitle.bold()).foregroundStyle(.white);Text("\(trip.startDate.formatted(date:.abbreviated,time:.omitted)) – \(trip.endDate.formatted(date:.abbreviated,time:.omitted)) · \(trip.dayCount)天").font(.subheadline).foregroundStyle(.white.opacity(0.92))}.padding(20) }.clipShape(RoundedRectangle(cornerRadius:26))
+            if let name=trip.coverAttributionName,let value=trip.coverAttributionURL,let url=URL(string:value){Link(destination:url){Label("封面图片：\(name)",systemImage:"arrow.up.right.square").font(.caption).foregroundStyle(Pastel.secondary)}}
+            HStack(spacing:10) { Shortcut(icon:"list.bullet",title:"总览",color:Pastel.yellow); NavigationLink { if let first=trip.sortedDays.first { DayDetailView(day:first) } } label:{Shortcut(icon:"calendar.day.timeline.left",title:"每日",color:Pastel.blue)}; NavigationLink { MealPlanView(trip:trip) } label:{Shortcut(icon:"fork.knife",title:"饮食",color:Pastel.peach)}; NavigationLink { PhotoLibraryView(trip:trip) } label:{Shortcut(icon:"photo.on.rectangle",title:"相册",color:Pastel.mint)} }.buttonStyle(.plain)
+            Picker("显示方式",selection:$mode){Text("按天查看").tag(0);Text("完整时间线").tag(1)}.pickerStyle(.segmented)
+            if mode == 0 { DayList(trip:trip) } else { TimelineOverview(trip:trip) }
+        }.padding(16) }.background(Pastel.background).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement:.topBarTrailing){Button{edit=true}label:{Image(systemName:"pencil")}} }.sheet(isPresented:$edit){NavigationStack{TripEditorView(trip:trip)}}
+    }
+}
+
+struct Shortcut: View { let icon:String;let title:String;let color:Color;var body:some View{VStack(spacing:7){Image(systemName:icon).font(.title3).frame(width:48,height:42).background(color.opacity(0.65)).clipShape(RoundedRectangle(cornerRadius:14));Text(title).font(.caption.weight(.semibold))}.foregroundStyle(Pastel.text).frame(maxWidth:.infinity)}}
+struct DayList: View { let trip:Trip;var body:some View{LazyVStack(spacing:12){ForEach(trip.sortedDays){day in NavigationLink{DayDetailView(day:day)}label:{HStack(spacing:12){Text("D\(day.dayNumber)").font(.headline).foregroundStyle(Pastel.text).frame(width:48,height:38).background(Pastel.yellow).clipShape(Capsule());VStack(alignment:.leading,spacing:3){Text(day.date.formatted(.dateTime.month().day().weekday(.wide).locale(Locale(identifier:"zh_CN")))).font(.subheadline.weight(.semibold)).foregroundStyle(Pastel.text);Text(day.title.isEmpty ? (day.activities.first?.title ?? "自由安排") : day.title).font(.caption).foregroundStyle(Pastel.secondary)};Spacer();Image(systemName:"chevron.right").foregroundStyle(Pastel.secondary)}.padding(14).pastelCard()}.buttonStyle(.plain)}}}}
+struct TimelineOverview: View { let trip:Trip;var body:some View{LazyVStack(alignment:.leading,spacing:18){ForEach(trip.sortedDays){day in VStack(alignment:.leading,spacing:10){PastelTag(text:"D\(day.dayNumber) · \(day.date.formatted(.dateTime.month().day()))",color:Pastel.yellow);if day.sortedActivities.isEmpty{Text("暂无安排").font(.caption).foregroundStyle(Pastel.secondary).padding(.leading,12)}else{ForEach(day.sortedActivities){activity in HStack(alignment:.top){Circle().fill(Pastel.peachStrong).frame(width:8,height:8).padding(.top,5);VStack(alignment:.leading){Text(activity.startTime.formatted(date:.omitted,time:.shortened)).font(.caption).foregroundStyle(Pastel.secondary);Text(activity.title).font(.subheadline.weight(.semibold)).foregroundStyle(Pastel.text)}}}}}}}}}
+
