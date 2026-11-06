@@ -114,7 +114,7 @@ struct DestinationPhotoService {
 
 struct PlaceResult: Identifiable { let id = UUID(); let name: String; let subtitle: String; let coordinate: CLLocationCoordinate2D }
 struct LocationSearchService {
-    func search(_ query: String, near destination: String? = nil) async throws -> [PlaceResult] {
+    func search(_ query: String, near destination: String? = nil, categoryHint: String = "景点") async throws -> [PlaceResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDestination = destination?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         var destinationCoordinate: CLLocationCoordinate2D?
@@ -126,7 +126,8 @@ struct LocationSearchService {
         }
 
         let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = trimmedQuery.isEmpty ? "景点" : trimmedQuery
+        request.naturalLanguageQuery = trimmedQuery.isEmpty ? categoryHint : trimmedQuery
+        request.resultTypes = .pointOfInterest
         if let destinationCoordinate {
             request.region = MKCoordinateRegion(
                 center: destinationCoordinate,
@@ -136,7 +137,9 @@ struct LocationSearchService {
             request.naturalLanguageQuery = "\(trimmedDestination) \(request.naturalLanguageQuery ?? "景点")"
         }
 
-        var items = try await MKLocalSearch(request: request).start().mapItems
+        var items = try await MKLocalSearch(request: request).start().mapItems.filter { item in
+            item.pointOfInterestCategory != nil
+        }
         if let destinationCoordinate {
             let destinationLocation = CLLocation(latitude: destinationCoordinate.latitude, longitude: destinationCoordinate.longitude)
             items.sort {
