@@ -15,22 +15,18 @@ jobs:
         run: brew install xcodegen
       - name: 生成 Xcode 工程
         run: xcodegen generate
-      - name: 静态检查与单元测试
+      - name: 编译 iPhone Release App
         shell: bash
         run: |
           set +e
-          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(device["udid"] for devices in data["devices"].values() for device in devices if device.get("isAvailable") and "iPhone" in device["name"]))')
-          echo "Using iPhone simulator: $simulator_id"
-          xcodebuild test -project TravelBuddy.xcodeproj -scheme TravelBuddy -destination "platform=iOS Simulator,id=$simulator_id" CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild-test.log
+          xcodebuild -project TravelBuddy.xcodeproj -scheme TravelBuddy -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee xcodebuild-release.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            grep -E 'error:|fatal error:|Testing failed:|Unable to find a destination|XCTAssert' xcodebuild-test.log | tail -80 | while IFS= read -r line; do
+            grep -E 'error:|fatal error:' xcodebuild-release.log | tail -80 | while IFS= read -r line; do
               echo "::error::$line"
             done
           fi
           exit "$status"
-      - name: 编译 iPhone Release App
-        run: xcodebuild -project TravelBuddy.xcodeproj -scheme TravelBuddy -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
       - name: 打包未签名 IPA
         run: |
           mkdir -p Payload
@@ -40,6 +36,13 @@ jobs:
         with:
           name: TravelBuddy-unsigned-IPA
           path: TravelBuddy-unsigned.ipa
+      - name: 单元测试
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(device["udid"] for devices in data["devices"].values() for device in devices if device.get("isAvailable") and "iPhone" in device["name"]))')
+          echo "Using iPhone simulator: $simulator_id"
+          xcodebuild test -project TravelBuddy.xcodeproj -scheme TravelBuddy -destination "platform=iOS Simulator,id=$simulator_id" CODE_SIGNING_ALLOWED=NO
       - name: 发布到 GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
