@@ -5,6 +5,7 @@ import Security
 enum SecureStore {
     private static let service = "com.example.TravelBuddy"
     private static let account = "openai-api-key"
+    private static let googleMapsAccount = "google-maps-api-key"
 
     static func saveOpenAIKey(_ value: String) throws {
         let data = Data(value.utf8)
@@ -30,6 +31,33 @@ enum SecureStore {
 
     static func removeOpenAIKey() {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    static func saveGoogleMapsKey(_ value: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: googleMapsAccount]
+        SecItemDelete(query as CFDictionary)
+        var item = query
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw OpenAIImageError.keychain(status) }
+    }
+
+    static func googleMapsKey() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+            kSecAttrAccount as String: googleMapsAccount, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func removeGoogleMapsKey() {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: googleMapsAccount]
         SecItemDelete(query as CFDictionary)
     }
 }

@@ -112,45 +112,63 @@ struct DestinationPhotoService {
     }
 }
 
-struct PlaceResult: Identifiable { let id = UUID(); let name: String; let subtitle: String; let coordinate: CLLocationCoordinate2D }
+struct PlaceResult: Identifiable { let id = UUID(); let name: String; let subtitle: String; let coordinate: CLLocationCoordinate2D; let provider: String; let providerPlaceID: String? }
+
+enum GooglePlacesError: LocalizedError {
+    case missingKey, invalidResponse, api(Int,String)
+    var errorDescription:String? {
+        switch self {
+        case .missingKey: "尚未配置 Google Maps API Key"
+        case .invalidResponse: "Google Maps 返回了无效响应"
+        case .api(let status,let message): "Google Maps（\(status)）：\(message)"
+        }
+    }
+}
+
+struct GooglePlacesService {
+    private struct SearchResponse:Decodable {
+        struct Place:Decodable {
+            struct DisplayName:Decodable { let text:String }
+            struct Location:Decodable { let latitude:Double;let longitude:Double }
+            let id:String;let displayName:DisplayName;let formattedAddress:String?;let location:Location
+        }
+        let places:[Place]?
+    }
+    private struct ErrorResponse:Decodable { struct Detail:Decodable { let message:String };let error:Detail }
+
+    func search(_ query:String,near destination:String?,categoryHint:String)async throws->[PlaceResult] {
+        guard let key=SecureStore.googleMapsKey(),!key.isEmpty else{throw GooglePlacesError.missingKey}
+        let destination=(destination ?? "").trimmingCharacters(in:.whitespacesAndNewlines)
+        let keyword=query.trimmingCharacters(in:.whitespacesAndNewlines)
+        let textQuery:String
+        if keyword.isEmpty { textQuery=destination.isEmpty ? categoryHint:"\(destination) \(categoryHint)" }
+        else { textQuery=destination.isEmpty ? keyword:"\(destination) \(keyword)" }
+        var request=URLRequest(url:URL(string:"https://places.googleapis.com/v1/places:searchText")!)
+        request.httpMethod="POST"
+        request.setValue("application/json",forHTTPHeaderField:"Content-Type")
+        request.setValue(key,forHTTPHeaderField:"X-Goog-Api-Key")
+        request.setValue("places.id,places.displayName,places.formattedAddress,places.location",forHTTPHeaderField:"X-Goog-FieldMask")
+        if let bundleID=Bundle.main.bundleIdentifier{request.setValue(bundleID,forHTTPHeaderField:"X-Ios-Bundle-Identifier")}
+        request.httpBody=try JSONSerialization.data(withJSONObject:["textQuery":textQuery,"languageCode":"zh-CN","maxResultCount":15])
+        let (data,response)=try await URLSession.shared.data(for:request)
+        guard let http=response as? HTTPURLResponse else{throw GooglePlacesError.invalidResponse}
+        guard 200..<300 ~= http.statusCode else{
+            let message=(try? JSONDecoder().decode(ErrorResponse.self,from:data).error.message) ?? String(data:data,encoding:.utf8) ?? "请求失败"
+            throw GooglePlacesError.api(http.statusCode,message)
+        }
+        let places=try JSONDecoder().decode(SearchResponse.self,from:data).places ?? []
+        return places.map{place in PlaceResult(name:place.displayName.text,subtitle:place.formattedAddress ?? "",coordinate:.init(latitude:place.location.latitude,longitude:place.location.longitude),provider:"Google Maps",providerPlaceID:place.id)}
+    }
+
+    func validate()async throws->String {
+        _=try await search("故宫博物院",near:"北京",categoryHint:"景点")
+        return "连接成功，之后地点搜索将完全使用 Google Maps。"
+    }
+}
+
 struct LocationSearchService {
     func search(_ query: String, near destination: String? = nil, categoryHint: String = "景点") async throws -> [PlaceResult] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDestination = destination?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        var destinationCoordinate: CLLocationCoordinate2D?
-
-        if !trimmedDestination.isEmpty {
-            let destinationRequest = MKLocalSearch.Request()
-            destinationRequest.naturalLanguageQuery = trimmedDestination
-            destinationCoordinate = try? await MKLocalSearch(request: destinationRequest).start().mapItems.first?.placemark.coordinate
-        }
-
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = trimmedQuery.isEmpty ? categoryHint : trimmedQuery
-        request.resultTypes = .pointOfInterest
-        if let destinationCoordinate {
-            request.region = MKCoordinateRegion(
-                center: destinationCoordinate,
-                span: MKCoordinateSpan(latitudeDelta: 1.25, longitudeDelta: 1.25)
-            )
-        } else if !trimmedDestination.isEmpty {
-            request.naturalLanguageQuery = "\(trimmedDestination) \(request.naturalLanguageQuery ?? "景点")"
-        }
-
-        var items = try await MKLocalSearch(request: request).start().mapItems.filter { item in
-            item.pointOfInterestCategory != nil
-        }
-        if let destinationCoordinate {
-            let destinationLocation = CLLocation(latitude: destinationCoordinate.latitude, longitude: destinationCoordinate.longitude)
-            items.sort {
-                let left = CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude)
-                let right = CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude)
-                return left.distance(from: destinationLocation) < right.distance(from: destinationLocation)
-            }
-        }
-        return items.prefix(12).map { item in
-            PlaceResult(name: item.name ?? query, subtitle: item.placemark.title ?? "", coordinate: item.placemark.coordinate)
-        }
+        try await GooglePlacesService().search(query,near:destination,categoryHint:categoryHint)
     }
 }
 

@@ -83,6 +83,7 @@ final class ItineraryActivity {
     var estimatedCost: Double = 0
     var latitude: Double?
     var longitude: Double?
+    var googlePlaceID: String?
     var isCompleted: Bool = false
     var orderIndex: Int = 0
     var day: TravelDay?
