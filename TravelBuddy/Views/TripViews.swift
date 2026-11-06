@@ -18,8 +18,10 @@ struct TripListView: View {
                     HStack { VStack(alignment:.leading,spacing:2) { Text("我的旅行").font(.largeTitle.bold()).foregroundStyle(Pastel.text); Text("和小桃一起，把期待装进行李箱").font(.subheadline).foregroundStyle(Pastel.secondary) }; Spacer(); Image("pigMap").resizable().scaledToFit().frame(width:76,height:76) }
                     Picker("旅行筛选",selection:$filter) { Text("全部").tag(0);Text("待出发").tag(1);Text("回忆").tag(2) }.pickerStyle(.segmented)
                     if filtered.isEmpty { EmptyStateView(title:"还没有旅行",message:"先选一个想去的地方，小桃会陪你慢慢计划。",buttonTitle:"创建旅行",action:{showingEditor=true}) }
-                    ForEach(filtered) { trip in NavigationLink { TripOverviewView(trip:trip) } label:{ TravelCard(trip:trip) }.buttonStyle(.plain).contextMenu { Button(role:.destructive) { deleting=trip } label:{ Label("删除",systemImage:"trash") } } }
-                }.padding(18).padding(.bottom,70)
+                    LazyVGrid(columns:[GridItem(.adaptive(minimum:320,maximum:480),spacing:18)],spacing:18) {
+                        ForEach(filtered) { trip in NavigationLink { TripOverviewView(trip:trip) } label:{ TravelCard(trip:trip) }.buttonStyle(.plain).contextMenu { Button(role:.destructive) { deleting=trip } label:{ Label("删除",systemImage:"trash") } } }
+                    }
+                }.frame(maxWidth:1180).frame(maxWidth:.infinity).padding(18).padding(.bottom,70)
             }
             RoundedIconButton(icon:"plus",color:Pastel.yellow) { showingEditor=true }.padding(22)
         }.toolbar(.hidden,for:.navigationBar).sheet(isPresented:$showingEditor) { NavigationStack { TripEditorView() } }.confirmationDialog("要删除“\(deleting?.title ?? "这趟旅行")”吗？",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}}),titleVisibility:.visible){Button("删除旅行",role:.destructive){if let deleting{context.delete(deleting);try? context.save()};deleting=nil};Button("取消",role:.cancel){deleting=nil}}message:{Text("相关日程、餐食和本地记录也会被删除，此操作无法撤销。")}
@@ -133,15 +135,16 @@ struct TripEditorView: View {
 
 struct TripOverviewView: View {
     @Environment(\.modelContext) private var context; @Bindable var trip:Trip
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var mode=0;@State private var edit=false
     var body: some View {
         ScrollView { VStack(alignment:.leading,spacing:20) {
-            ZStack(alignment:.bottomLeading) { StoredOrAssetImage(path:trip.coverImagePath,asset:trip.coverAsset).scaledToFill().frame(height:235).clipped(); LinearGradient(colors:[.clear,.black.opacity(0.68)],startPoint:.center,endPoint:.bottom); VStack(alignment:.leading,spacing:5){Text(trip.title).font(.largeTitle.bold()).foregroundStyle(.white);Text("\(trip.startDate.formatted(date:.abbreviated,time:.omitted)) – \(trip.endDate.formatted(date:.abbreviated,time:.omitted)) · \(trip.dayCount)天").font(.subheadline).foregroundStyle(.white.opacity(0.92))}.padding(20) }.clipShape(RoundedRectangle(cornerRadius:26))
+            ZStack(alignment:.bottomLeading) { StoredOrAssetImage(path:trip.coverImagePath,asset:trip.coverAsset).scaledToFill().frame(height:horizontalSizeClass == .regular ? 330:235).clipped(); LinearGradient(colors:[.clear,.black.opacity(0.68)],startPoint:.center,endPoint:.bottom); VStack(alignment:.leading,spacing:5){Text(trip.title).font(.largeTitle.bold()).foregroundStyle(.white);Text("\(trip.startDate.formatted(date:.abbreviated,time:.omitted)) – \(trip.endDate.formatted(date:.abbreviated,time:.omitted)) · \(trip.dayCount)天").font(.subheadline).foregroundStyle(.white.opacity(0.92))}.padding(20) }.clipShape(RoundedRectangle(cornerRadius:26))
             if let name=trip.coverAttributionName,let value=trip.coverAttributionURL,let url=URL(string:value){Link(destination:url){Label("封面图片：\(name)",systemImage:"arrow.up.right.square").font(.caption).foregroundStyle(Pastel.secondary)}}
             HStack(spacing:10) { Shortcut(icon:"list.bullet",title:"总览",color:Pastel.yellow); NavigationLink { if let first=trip.sortedDays.first { DayDetailView(day:first) } } label:{Shortcut(icon:"calendar.day.timeline.left",title:"每日",color:Pastel.blue)}; NavigationLink { MealPlanView(trip:trip) } label:{Shortcut(icon:"fork.knife",title:"饮食",color:Pastel.peach)}; NavigationLink { PhotoLibraryView(trip:trip) } label:{Shortcut(icon:"photo.on.rectangle",title:"相册",color:Pastel.mint)} }.buttonStyle(.plain)
             Picker("显示方式",selection:$mode){Text("按天查看").tag(0);Text("完整时间线").tag(1)}.pickerStyle(.segmented)
             if mode == 0 { DayList(trip:trip) } else { TimelineOverview(trip:trip) }
-        }.padding(16) }.background(Pastel.background).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement:.topBarTrailing){Button{edit=true}label:{Image(systemName:"pencil")}} }.sheet(isPresented:$edit){NavigationStack{TripEditorView(trip:trip)}}
+        }.frame(maxWidth:1100).frame(maxWidth:.infinity).padding(16) }.background(Pastel.background).navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement:.topBarTrailing){Button{edit=true}label:{Image(systemName:"pencil")}} }.sheet(isPresented:$edit){NavigationStack{TripEditorView(trip:trip)}}
     }
 }
 

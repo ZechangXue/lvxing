@@ -26,6 +26,8 @@ struct CalendarView: View {
                 calendarCard
                 selectedSchedule
             }
+            .frame(maxWidth: 980)
+            .frame(maxWidth: .infinity)
             .padding(18)
         }
         .background(Pastel.background)

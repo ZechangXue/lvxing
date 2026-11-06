@@ -38,6 +38,32 @@ jobs:
         with:
           name: TravelBuddy-unsigned-IPA
           path: TravelBuddy-unsigned.ipa
+      - name: 编译 iPad Pro 优化版
+        shell: bash
+        run: |
+          set +e
+          xcodebuild -project TravelBuddy.xcodeproj -scheme TravelBuddyPad -configuration Release -sdk iphoneos -derivedDataPath DerivedDataPad CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee xcodebuild-ipad.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E 'error:|fatal error:' xcodebuild-ipad.log | tail -80 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$status"
+      - name: 验证 iPad 独立版本配置
+        run: |
+          /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' DerivedDataPad/Build/Products/Release-iphoneos/TravelBuddyPad.app/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily' DerivedDataPad/Build/Products/Release-iphoneos/TravelBuddyPad.app/Info.plist
+      - name: 打包 iPad Pro 优化版 IPA
+        run: |
+          mkdir -p iPadPackage/Payload
+          cp -R DerivedDataPad/Build/Products/Release-iphoneos/TravelBuddyPad.app iPadPackage/Payload/
+          cd iPadPackage
+          ditto -c -k --sequesterRsrc --keepParent Payload ../TravelBuddy-iPad-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TravelBuddy-iPad-unsigned-IPA
+          path: TravelBuddy-iPad-unsigned.ipa
       - name: 单元测试
         timeout-minutes: 10
         shell: bash
@@ -49,6 +75,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: TravelBuddy-unsigned.ipa
+          files: |
+            TravelBuddy-unsigned.ipa
+            TravelBuddy-iPad-unsigned.ipa
           generate_release_notes: true
 

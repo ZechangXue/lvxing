@@ -23,6 +23,8 @@
 4. 输入 Apple ID，让 Sideloadly 使用你的个人开发证书签名并安装。
 5. iPhone 首次侧载前需开启“设置 → 隐私与安全性 → 开发者模式”，并在设备管理中信任对应账号。
 
+同一次 Actions 构建还会生成 `TravelBuddy-iPad-unsigned-IPA`。这是独立的 iPad-only 版本（显示名称“旅行计划 HD”），使用独立 Bundle ID，可与 iPhone 版并存；针对 iPad Pro 提供侧边栏导航、自适应多列旅行卡片、更宽的详情封面以及居中的阅读宽度。
+
 免费 Apple ID 的侧载 App 通常需要每 7 天重新签名安装；具体限制由 Apple 当前政策决定。GitHub 生成的是未签名 IPA，Apple ID 只在你的 Sideloadly 本机使用，不应放进 GitHub Secrets。
 
 ## 在 Mac / Xcode 打开

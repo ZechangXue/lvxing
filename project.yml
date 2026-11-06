@@ -35,6 +35,30 @@ targets:
     scheme:
       testTargets:
         - TravelBuddyTests
+  TravelBuddyPad:
+    type: application
+    platform: iOS
+    sources:
+      - path: TravelBuddy
+        excludes:
+          - "**/*.md"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.TravelBuddyPad
+        PRODUCT_NAME: TravelBuddyPad
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) IPAD_EDITION"
+        INFOPLIST_KEY_CFBundleDisplayName: 旅行计划 HD
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.travel
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: 用于把你的旅行照片添加到行程和相册。
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: 用于保存你选择的旅行照片。
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: 用于搜索地点并在地图上显示行程位置。
+        INFOPLIST_KEY_UNSPLASH_ACCESS_KEY: ""
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "2"
+        SUPPORTS_MACCATALYST: NO
   TravelBuddyTests:
     type: bundle.unit-test
     platform: iOS
