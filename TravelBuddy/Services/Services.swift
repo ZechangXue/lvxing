@@ -112,63 +112,141 @@ struct DestinationPhotoService {
     }
 }
 
-struct PlaceResult: Identifiable { let id = UUID(); let name: String; let subtitle: String; let coordinate: CLLocationCoordinate2D; let provider: String; let providerPlaceID: String? }
+struct PlaceResult: Identifiable {
+    let id = UUID()
+    let name: String
+    let subtitle: String
+    let coordinate: CLLocationCoordinate2D
+    let provider: String
+}
 
-enum GooglePlacesError: LocalizedError {
-    case missingKey, invalidResponse, api(Int,String)
-    var errorDescription:String? {
-        switch self {
-        case .missingKey: "尚未配置 Google Maps API Key"
-        case .invalidResponse: "Google Maps 返回了无效响应"
-        case .api(let status,let message): "Google Maps（\(status)）：\(message)"
+enum PlaceSearchError: LocalizedError {
+    case unavailable
+    var errorDescription: String? { "地点搜索暂时不可用，请稍后再试。" }
+}
+
+private struct NominatimPlace: Decodable, Sendable {
+    let placeID: Int64
+    let latitude: String
+    let longitude: String
+    let displayName: String
+    let name: String?
+    let category: String?
+
+    enum CodingKeys: String, CodingKey {
+        case placeID = "place_id"
+        case latitude = "lat"
+        case longitude = "lon"
+        case displayName = "display_name"
+        case name, category
+    }
+}
+
+private actor NominatimRequestGate {
+    static let shared = NominatimRequestGate()
+    private var lastRequest = Date.distantPast
+    private var cache: [String: [NominatimPlace]] = [:]
+
+    func cached(_ key: String) -> [NominatimPlace]? { cache[key] }
+
+    func waitForSlot() async throws {
+        let now = Date()
+        let scheduled = max(now, lastRequest.addingTimeInterval(1))
+        lastRequest = scheduled
+        let remaining = scheduled.timeIntervalSince(now)
+        if remaining > 0 {
+            try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+        }
+    }
+
+    func store(_ places: [NominatimPlace], for key: String) {
+        cache[key] = places
+        if cache.count > 80, let first = cache.keys.first { cache.removeValue(forKey: first) }
+    }
+}
+
+private struct NominatimPlaceSearch {
+    func search(_ query: String, near destination: String?, categoryHint: String) async throws -> [PlaceResult] {
+        let destination = (destination ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let terms = [destination, keyword.isEmpty ? categoryHint : keyword].filter { !$0.isEmpty }
+        let textQuery = terms.joined(separator: " ")
+        guard !textQuery.isEmpty else { return [] }
+
+        let cacheKey = textQuery.lowercased()
+        let rawPlaces: [NominatimPlace]
+        if let cached = await NominatimRequestGate.shared.cached(cacheKey) {
+            rawPlaces = cached
+        } else {
+            try await NominatimRequestGate.shared.waitForSlot()
+            var components = URLComponents(string: "https://nominatim.openstreetmap.org/search")!
+            components.queryItems = [
+                .init(name: "q", value: textQuery), .init(name: "format", value: "jsonv2"),
+                .init(name: "addressdetails", value: "1"), .init(name: "limit", value: "15"),
+                .init(name: "dedupe", value: "1"), .init(name: "accept-language", value: "zh-CN")
+            ]
+            var request = URLRequest(url: components.url!, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
+            request.setValue("TravelBuddy/1.2 (+https://github.com/ZechangXue/lvxing)", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { throw PlaceSearchError.unavailable }
+            rawPlaces = try JSONDecoder().decode([NominatimPlace].self, from: data)
+            await NominatimRequestGate.shared.store(rawPlaces, for: cacheKey)
+        }
+
+        let pointOfInterestCategories: Set<String> = ["amenity", "tourism", "shop", "leisure", "historic", "railway", "public_transport", "building", "aeroway"]
+        let preferred = rawPlaces.filter { $0.category.map(pointOfInterestCategories.contains) == true }
+        let usable = preferred.isEmpty ? rawPlaces.filter { $0.category != "place" && $0.category != "boundary" } : preferred
+        return usable.compactMap { place in
+            guard let latitude = Double(place.latitude), let longitude = Double(place.longitude) else { return nil }
+            let fallbackName = place.displayName.split(separator: ",", maxSplits: 1).first.map(String.init) ?? place.displayName
+            return PlaceResult(
+                name: place.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? fallbackName,
+                subtitle: place.displayName,
+                coordinate: .init(latitude: latitude, longitude: longitude),
+                provider: "OpenStreetMap"
+            )
         }
     }
 }
 
-struct GooglePlacesService {
-    private struct SearchResponse:Decodable {
-        struct Place:Decodable {
-            struct DisplayName:Decodable { let text:String }
-            struct Location:Decodable { let latitude:Double;let longitude:Double }
-            let id:String;let displayName:DisplayName;let formattedAddress:String?;let location:Location
+private struct ApplePlaceSearch {
+    func search(_ query: String, near destination: String?, categoryHint: String) async throws -> [PlaceResult] {
+        let destination = (destination ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = [destination, keyword.isEmpty ? categoryHint : keyword].filter { !$0.isEmpty }.joined(separator: " ")
+        request.resultTypes = .pointOfInterest
+        let response = try await MKLocalSearch(request: request).start()
+        return response.mapItems.compactMap { item in
+            guard item.pointOfInterestCategory != nil else { return nil }
+            let placemark = item.placemark
+            let subtitle = [placemark.thoroughfare, placemark.locality, placemark.administrativeArea, placemark.country]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            return PlaceResult(name: item.name ?? keyword, subtitle: subtitle, coordinate: placemark.coordinate, provider: "Apple 地图")
         }
-        let places:[Place]?
-    }
-    private struct ErrorResponse:Decodable { struct Detail:Decodable { let message:String };let error:Detail }
-
-    func search(_ query:String,near destination:String?,categoryHint:String)async throws->[PlaceResult] {
-        guard let key=SecureStore.googleMapsKey(),!key.isEmpty else{throw GooglePlacesError.missingKey}
-        let destination=(destination ?? "").trimmingCharacters(in:.whitespacesAndNewlines)
-        let keyword=query.trimmingCharacters(in:.whitespacesAndNewlines)
-        let textQuery:String
-        if keyword.isEmpty { textQuery=destination.isEmpty ? categoryHint:"\(destination) \(categoryHint)" }
-        else { textQuery=destination.isEmpty ? keyword:"\(destination) \(keyword)" }
-        var request=URLRequest(url:URL(string:"https://places.googleapis.com/v1/places:searchText")!)
-        request.httpMethod="POST"
-        request.setValue("application/json",forHTTPHeaderField:"Content-Type")
-        request.setValue(key,forHTTPHeaderField:"X-Goog-Api-Key")
-        request.setValue("places.id,places.displayName,places.formattedAddress,places.location",forHTTPHeaderField:"X-Goog-FieldMask")
-        if let bundleID=Bundle.main.bundleIdentifier{request.setValue(bundleID,forHTTPHeaderField:"X-Ios-Bundle-Identifier")}
-        request.httpBody=try JSONSerialization.data(withJSONObject:["textQuery":textQuery,"languageCode":"zh-CN","maxResultCount":15])
-        let (data,response)=try await URLSession.shared.data(for:request)
-        guard let http=response as? HTTPURLResponse else{throw GooglePlacesError.invalidResponse}
-        guard 200..<300 ~= http.statusCode else{
-            let message=(try? JSONDecoder().decode(ErrorResponse.self,from:data).error.message) ?? String(data:data,encoding:.utf8) ?? "请求失败"
-            throw GooglePlacesError.api(http.statusCode,message)
-        }
-        let places=try JSONDecoder().decode(SearchResponse.self,from:data).places ?? []
-        return places.map{place in PlaceResult(name:place.displayName.text,subtitle:place.formattedAddress ?? "",coordinate:.init(latitude:place.location.latitude,longitude:place.location.longitude),provider:"Google Maps",providerPlaceID:place.id)}
-    }
-
-    func validate()async throws->String {
-        _=try await search("故宫博物院",near:"北京",categoryHint:"景点")
-        return "连接成功，之后地点搜索将完全使用 Google Maps。"
     }
 }
 
 struct LocationSearchService {
     func search(_ query: String, near destination: String? = nil, categoryHint: String = "景点") async throws -> [PlaceResult] {
-        try await GooglePlacesService().search(query,near:destination,categoryHint:categoryHint)
+        async let openStreetMapSearch = NominatimPlaceSearch().search(query, near: destination, categoryHint: categoryHint)
+        async let appleSearch = ApplePlaceSearch().search(query, near: destination, categoryHint: categoryHint)
+        var combined: [PlaceResult] = []
+        var failures = 0
+        do { combined.append(contentsOf: try await openStreetMapSearch) } catch { failures += 1 }
+        do { combined.append(contentsOf: try await appleSearch) } catch { failures += 1 }
+        if failures == 2 { throw PlaceSearchError.unavailable }
+
+        var seen = Set<String>()
+        return combined.filter { place in
+            let key = place.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return seen.insert(key).inserted
+        }.prefix(15).map { $0 }
     }
+}
+
+private extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
 }
 

@@ -30,25 +30,22 @@ struct FavoriteEditorView:View{@Environment(\.dismiss)private var dismiss;@Envir
 struct ProfileView:View{
     @State private var showingOpenAI=false
     @State private var hasOpenAIKey=false
-    @State private var showingGoogleMaps=false
-    @State private var hasGoogleMapsKey=false
     var body:some View{ScrollView{VStack(spacing:20){
         Image("pigMap").resizable().scaledToFit().frame(height:200)
         VStack(spacing:6){Text("小桃的旅行手账").font(.title.bold()).foregroundStyle(Pastel.text);Text("把每一段期待，都好好收藏").foregroundStyle(Pastel.secondary)}
         VStack(spacing:0){
             Button{showingOpenAI=true}label:{HStack{ProfileRow(icon:"wand.and.stars",title:"OpenAI 旅行封面",subtitle:hasOpenAIKey ? "已配置 · 新旅程优先自动生成":"未配置 · 使用默认封面");Image(systemName:"chevron.right").foregroundStyle(Pastel.secondary).padding(.trailing,14)}}.buttonStyle(.plain)
             Divider().padding(.leading,62)
-            Button{showingGoogleMaps=true}label:{HStack{ProfileRow(icon:"map.fill",title:"Google Maps 地点搜索",subtitle:hasGoogleMapsKey ? "已配置 · 使用 Google Places":"未配置 · 地点搜索暂不可用");Image(systemName:"chevron.right").foregroundStyle(Pastel.secondary).padding(.trailing,14)}}.buttonStyle(.plain)
+            ProfileRow(icon:"map.fill",title:"地点搜索",subtitle:"OpenStreetMap + Apple 地图 · 无需额外 Key")
             Divider().padding(.leading,62)
             ProfileRow(icon:"icloud.and.arrow.down",title:"离线优先",subtitle:"生成结果与核心行程保存在本机")
             Divider().padding(.leading,62)
             ProfileRow(icon:"lock.shield",title:"隐私",subtitle:"API Key 仅保存在本机钥匙串")
         }.pastelCard()
-        Text("TravelBuddy 1.1").font(.caption).foregroundStyle(Pastel.secondary)
+        Text("TravelBuddy 1.2").font(.caption).foregroundStyle(Pastel.secondary)
     }.padding(22)}.background(Pastel.background).navigationTitle("我的")
-        .onAppear{hasOpenAIKey=SecureStore.openAIKey() != nil;hasGoogleMapsKey=SecureStore.googleMapsKey() != nil}
+        .onAppear{hasOpenAIKey=SecureStore.openAIKey() != nil}
         .sheet(isPresented:$showingOpenAI,onDismiss:{hasOpenAIKey=SecureStore.openAIKey() != nil}){NavigationStack{OpenAISettingsView()}}
-        .sheet(isPresented:$showingGoogleMaps,onDismiss:{hasGoogleMapsKey=SecureStore.googleMapsKey() != nil}){NavigationStack{GoogleMapsSettingsView()}}
     }
 }
 
@@ -67,16 +64,5 @@ struct OpenAISettingsView:View{
     @MainActor private func validate()async{validating=true;defer{validating=false};do{message=try await OpenAIImageService().validateImageAccess()}catch{message=error.localizedDescription}}
 }
 
-struct GoogleMapsSettingsView:View{
-    @Environment(\.dismiss)private var dismiss
-    @State private var apiKey="";@State private var hasSavedKey=false;@State private var message:String?;@State private var validating=false
-    var body:some View{Form{
-        Section{SecureField(hasSavedKey ? "输入新 Key 可替换现有 Key":"AIza…",text:$apiKey).textInputAutocapitalization(.never).autocorrectionDisabled();if hasSavedKey{Label("已在本机钥匙串中安全保存",systemImage:"checkmark.shield.fill").foregroundStyle(.green)}}header:{Text("Google Maps API Key")}footer:{Text("请在 Google Cloud 启用 Places API (New) 和账单。Key 只保存在本机，不会提交到 GitHub。若限制为 iOS 应用，请加入当前安装包标识：\(Bundle.main.bundleIdentifier ?? "未知")。")}
-        Section{Button{Task{await validate()}}label:{if validating{HStack{ProgressView();Text("正在验证 Google 地点搜索…")}}else{Label("验证 Key 与 Places API",systemImage:"checkmark.shield")}}.disabled(!hasSavedKey||validating);Link("打开 Google Maps Platform 凭据页面",destination:URL(string:"https://console.cloud.google.com/google/maps-apis/credentials")!);if let message{Text(message).foregroundStyle(Pastel.secondary).textSelection(.enabled)}}
-        if hasSavedKey{Section{Button("移除 Google Maps Key",role:.destructive){SecureStore.removeGoogleMapsKey();hasSavedKey=false;apiKey="";message="已移除，配置新 Key 前地点搜索将不可用。"}}}
-    }.navigationTitle("Google Maps 地点搜索").navigationBarTitleDisplayMode(.inline).toolbar{ToolbarItem(placement:.cancellationAction){Button("关闭"){dismiss()}};ToolbarItem(placement:.confirmationAction){Button("保存"){save()}.disabled(apiKey.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}}.onAppear{hasSavedKey=SecureStore.googleMapsKey() != nil}}
-    private func save(){do{try SecureStore.saveGoogleMapsKey(apiKey.trimmingCharacters(in:.whitespacesAndNewlines));hasSavedKey=true;apiKey="";message="保存成功。请点击验证，确认 Places API (New) 与账单已启用。"}catch{message=error.localizedDescription}}
-    @MainActor private func validate()async{validating=true;defer{validating=false};do{message=try await GooglePlacesService().validate()}catch{message=error.localizedDescription}}
-}
 struct ProfileRow:View{let icon:String;let title:String;let subtitle:String;var body:some View{HStack(spacing:14){Image(systemName:icon).foregroundStyle(Pastel.peachStrong).frame(width:38,height:38).background(Pastel.yellow.opacity(0.55)).clipShape(Circle());VStack(alignment:.leading,spacing:3){Text(title).font(.headline).foregroundStyle(Pastel.text);Text(subtitle).font(.caption).foregroundStyle(Pastel.secondary)};Spacer()}.padding(14)}}
 
