@@ -29,16 +29,16 @@ final class Trip {
     var id: UUID = UUID()
     var title: String = ""
     var destination: String = ""
-    var startDate: Date = .now
-    var endDate: Date = .now
+    var startDate: Date = Date.now
+    var endDate: Date = Date.now
     var tripDescription: String = ""
     var companions: String = ""
     var themeHex: String = "#FFBE98"
-    var coverAsset: String = "coverParis"
+    var coverAsset: String = "generic"
     var coverImagePath: String?
     var coverAttributionName: String?
     var coverAttributionURL: String?
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
     @Relationship(deleteRule: .cascade) var days: [TravelDay] = []
 
     init(title: String, destination: String, startDate: Date, endDate: Date, tripDescription: String = "", companions: String = "", themeHex: String = "#FFBE98", coverAsset: String = "generic") {
@@ -53,7 +53,7 @@ final class Trip {
 @Model
 final class TravelDay {
     var id: UUID = UUID()
-    var date: Date = .now
+    var date: Date = Date.now
     var dayNumber: Int = 1
     var title: String = ""
     var notes: String = ""
@@ -70,8 +70,8 @@ final class TravelDay {
 final class ItineraryActivity {
     var id: UUID = UUID()
     var title: String = ""
-    var startTime: Date = .now
-    var endTime: Date = .now
+    var startTime: Date = Date.now
+    var endTime: Date = Date.now
     var periodRaw: String = ActivityPeriod.morning.rawValue
     var kindRaw: String = ActivityKind.sightseeing.rawValue
     var locationName: String = ""
@@ -103,7 +103,7 @@ final class Meal {
     var restaurantName: String = ""
     var cuisine: String = ""
     var locationName: String = ""
-    var plannedTime: Date = .now
+    var plannedTime: Date = Date.now
     var notes: String = ""
     var reservationDetails: String = ""
     var estimatedCost: Double = 0
@@ -124,7 +124,7 @@ final class PhotoAsset {
     var tripID: UUID?
     var dayID: UUID?
     var activityID: UUID?
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
     init(localPath: String? = nil, remoteURL: String? = nil, thumbnailURL: String? = nil, attributionName: String? = nil, attributionURL: String? = nil, tripID: UUID? = nil) {
         self.localPath = localPath; self.remoteURL = remoteURL; self.thumbnailURL = thumbnailURL; self.attributionName = attributionName; self.attributionURL = attributionURL; self.tripID = tripID
     }
@@ -139,7 +139,7 @@ final class FavoritePlace {
     var notes: String = ""
     var latitude: Double?
     var longitude: Double?
-    var createdAt: Date = .now
+    var createdAt: Date = Date.now
     init(name: String, category: String, city: String, notes: String = "") { self.name = name; self.category = category; self.city = city; self.notes = notes }
 }
 
