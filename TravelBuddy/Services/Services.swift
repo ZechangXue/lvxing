@@ -114,9 +114,38 @@ struct DestinationPhotoService {
 
 struct PlaceResult: Identifiable { let id = UUID(); let name: String; let subtitle: String; let coordinate: CLLocationCoordinate2D }
 struct LocationSearchService {
-    func search(_ query: String) async throws -> [PlaceResult] {
-        let request = MKLocalSearch.Request(); request.naturalLanguageQuery = query
-        return try await MKLocalSearch(request: request).start().mapItems.prefix(12).map { item in
+    func search(_ query: String, near destination: String? = nil) async throws -> [PlaceResult] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDestination = destination?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var destinationCoordinate: CLLocationCoordinate2D?
+
+        if !trimmedDestination.isEmpty {
+            let destinationRequest = MKLocalSearch.Request()
+            destinationRequest.naturalLanguageQuery = trimmedDestination
+            destinationCoordinate = try? await MKLocalSearch(request: destinationRequest).start().mapItems.first?.placemark.coordinate
+        }
+
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = trimmedQuery.isEmpty ? "景点" : trimmedQuery
+        if let destinationCoordinate {
+            request.region = MKCoordinateRegion(
+                center: destinationCoordinate,
+                span: MKCoordinateSpan(latitudeDelta: 1.25, longitudeDelta: 1.25)
+            )
+        } else if !trimmedDestination.isEmpty {
+            request.naturalLanguageQuery = "\(trimmedDestination) \(request.naturalLanguageQuery ?? "景点")"
+        }
+
+        var items = try await MKLocalSearch(request: request).start().mapItems
+        if let destinationCoordinate {
+            let destinationLocation = CLLocation(latitude: destinationCoordinate.latitude, longitude: destinationCoordinate.longitude)
+            items.sort {
+                let left = CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude)
+                let right = CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude)
+                return left.distance(from: destinationLocation) < right.distance(from: destinationLocation)
+            }
+        }
+        return items.prefix(12).map { item in
             PlaceResult(name: item.name ?? query, subtitle: item.placemark.title ?? "", coordinate: item.placemark.coordinate)
         }
     }

@@ -45,14 +45,20 @@ struct TripEditorView: View {
     @State private var coverAttributionURL: String?
     @State private var isGenerating = false
     @State private var generationMessage: String?
+    @State private var showingDateRangePicker = false
 
     var body: some View {
         Form {
             Section {
                 TextField("例如：冰岛极光之旅",text:$title)
                 TextField("任意目的地，例如：雷克雅未克",text:$destination)
-                DatePicker("出发日期",selection:$start,displayedComponents:.date)
-                DatePicker("结束日期",selection:$end,in:start...,displayedComponents:.date)
+                Button { showingDateRangePicker=true } label: {
+                    HStack {
+                        VStack(alignment:.leading,spacing:4){Text("出发").font(.caption).foregroundStyle(.secondary);Text(start.formatted(.dateTime.year().month().day())).foregroundStyle(Pastel.text)}
+                        Spacer();Image(systemName:"arrow.right").foregroundStyle(Pastel.peachStrong);Spacer()
+                        VStack(alignment:.trailing,spacing:4){Text("结束").font(.caption).foregroundStyle(.secondary);Text(end.formatted(.dateTime.year().month().day())).foregroundStyle(Pastel.text)}
+                    }
+                }.buttonStyle(.plain)
             } header: { Text("基本信息") }
             Section {
                 ZStack {
@@ -95,6 +101,10 @@ struct TripEditorView: View {
                 }
             }
         }
+        .sheet(isPresented:$showingDateRangePicker) {
+            NavigationStack { TripDateRangePicker(start:$start,end:$end) }
+                .presentationDetents([.large])
+        }
         .onAppear {
             if let trip {
                 title=trip.title;destination=trip.destination;start=trip.startDate;end=trip.endDate
@@ -130,6 +140,55 @@ struct TripEditorView: View {
         if let imageData { ImageStore.remove(named:value.coverImagePath); value.coverImagePath=try? ImageStore.save(imageData);value.coverAsset="generic" }
         value.coverAttributionName=coverAttributionName;value.coverAttributionURL=coverAttributionURL
         ItineraryFactory.synchronizeDays(for:value,oldDays:oldDays);if trip == nil { context.insert(value) };try? context.save();dismiss()
+    }
+}
+
+private struct TripDateRangePicker: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var start: Date
+    @Binding var end: Date
+    @State private var selectingEnd = false
+
+    private var activeDate: Binding<Date> {
+        Binding(
+            get: { selectingEnd ? end : start },
+            set: { value in
+                let day = value.startOfDay
+                if selectingEnd {
+                    end = max(day,start.startOfDay)
+                } else {
+                    start = day
+                    if end < day { end = day }
+                    selectingEnd = true
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(spacing:18) {
+            HStack(spacing:10) {
+                dateButton(title:"出发",date:start,selected:!selectingEnd){selectingEnd=false}
+                Image(systemName:"arrow.right").foregroundStyle(Pastel.peachStrong)
+                dateButton(title:"结束",date:end,selected:selectingEnd){selectingEnd=true}
+            }.padding(.horizontal)
+            Text(selectingEnd ? "请选择结束日期":"请选择出发日期，选完可直接继续点结束日期")
+                .font(.subheadline).foregroundStyle(Pastel.secondary)
+            DatePicker(
+                selectingEnd ? "结束日期":"出发日期",
+                selection:activeDate,
+                in: selectingEnd ? start.startOfDay... : Date.distantPast...,
+                displayedComponents:.date
+            ).datePickerStyle(.graphical).labelsHidden().tint(Pastel.peachStrong).padding(.horizontal)
+            Spacer(minLength:0)
+        }
+        .padding(.top,12).background(Pastel.background.ignoresSafeArea())
+        .navigationTitle("选择往返日期").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement:.confirmationAction){Button("完成"){dismiss()}} }
+    }
+
+    private func dateButton(title:String,date:Date,selected:Bool,action:@escaping()->Void)->some View {
+        Button(action:action){VStack(alignment:.leading,spacing:3){Text(title).font(.caption);Text(date.formatted(.dateTime.year().month().day())).font(.subheadline.weight(.semibold))}.foregroundStyle(Pastel.text).frame(maxWidth:.infinity,alignment:.leading).padding(12).background(selected ? Pastel.yellow:.white).clipShape(RoundedRectangle(cornerRadius:14)).overlay(RoundedRectangle(cornerRadius:14).stroke(selected ? Pastel.peachStrong:.clear,lineWidth:1.5))}.buttonStyle(.plain)
     }
 }
 
