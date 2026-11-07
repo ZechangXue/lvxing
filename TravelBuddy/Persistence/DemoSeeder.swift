@@ -25,7 +25,7 @@ enum DemoSeeder {
         guard (try? context.fetchCount(descriptor)) == 0 else { return }
         let calendar = Calendar(identifier: .gregorian)
         func date(_ y: Int, _ m: Int, _ d: Int) -> Date { calendar.date(from: DateComponents(year: y, month: m, day: d, hour: 12))! }
-        let paris = Trip(title: "法国浪漫之旅", destination: "法国 · 巴黎", startDate: date(2026,4,1), endDate: date(2026,4,8), tripDescription: "在花香与塞纳河的晚风里，慢慢认识巴黎。", companions: "小桃", coverAsset: "coverParis")
+        let paris = Trip(title: "法国浪漫之旅", destination: "法国 · 巴黎", startDate: date(2026,4,1), endDate: date(2026,4,8), tripDescription: "在花香与塞纳河的晚风里，慢慢认识巴黎。", companions: "小新新", coverAsset: "coverParis")
         ItineraryFactory.synchronizeDays(for: paris)
         if let d3 = paris.sortedDays.dropFirst(2).first {
             d3.title = "埃菲尔铁塔与塞纳河"

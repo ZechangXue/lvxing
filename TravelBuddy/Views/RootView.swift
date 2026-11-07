@@ -33,7 +33,7 @@ private struct IPadRootView: View {
                 VStack(spacing: 10) {
                     Image("pigMap").resizable().scaledToFit().frame(height: 118)
                     Text("TravelBuddy").font(.title2.bold()).foregroundStyle(Pastel.text)
-                    Text("小桃的旅行手账").font(.caption).foregroundStyle(Pastel.secondary)
+                    Text("小新新的旅行手账").font(.caption).foregroundStyle(Pastel.secondary)
                 }.padding(.vertical, 26)
                 List(IPadSection.allCases, selection: $selection) { section in
                     Label(section.rawValue, systemImage: section.icon).tag(section)

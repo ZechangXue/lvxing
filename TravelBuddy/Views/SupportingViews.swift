@@ -32,7 +32,7 @@ struct ProfileView:View{
     @State private var hasOpenAIKey=false
     var body:some View{ScrollView{VStack(spacing:20){
         Image("pigMap").resizable().scaledToFit().frame(height:200)
-        VStack(spacing:6){Text("小桃的旅行手账").font(.title.bold()).foregroundStyle(Pastel.text);Text("把每一段期待，都好好收藏").foregroundStyle(Pastel.secondary)}
+        VStack(spacing:6){Text("小新新的旅行手账").font(.title.bold()).foregroundStyle(Pastel.text);Text("把每一段期待，都好好收藏").foregroundStyle(Pastel.secondary)}
         VStack(spacing:0){
             Button{showingOpenAI=true}label:{HStack{ProfileRow(icon:"wand.and.stars",title:"OpenAI 旅行封面",subtitle:hasOpenAIKey ? "已配置 · 新旅程优先自动生成":"未配置 · 使用默认封面");Image(systemName:"chevron.right").foregroundStyle(Pastel.secondary).padding(.trailing,14)}}.buttonStyle(.plain)
             Divider().padding(.leading,62)
@@ -56,7 +56,7 @@ struct OpenAISettingsView:View{
     @State private var message:String?
     @State private var validating=false
     var body:some View{Form{
-        Section{SecureField(hasSavedKey ? "输入新 Key 可替换现有 Key":"sk-…",text:$apiKey).textInputAutocapitalization(.never).autocorrectionDisabled();if hasSavedKey{Label("已在本机钥匙串中安全保存",systemImage:"checkmark.shield.fill").foregroundStyle(.green)}}header:{Text("OpenAI API Key")}footer:{Text("有可用 Key 时，新建旅程会优先生成同款小桃画风封面，并显示生成进度；没有 Key 或生成失败时自动使用默认封面。Key 不会提交到 GitHub。")}
+        Section{SecureField(hasSavedKey ? "输入新 Key 可替换现有 Key":"sk-…",text:$apiKey).textInputAutocapitalization(.never).autocorrectionDisabled();if hasSavedKey{Label("已在本机钥匙串中安全保存",systemImage:"checkmark.shield.fill").foregroundStyle(.green)}}header:{Text("OpenAI API Key")}footer:{Text("有可用 Key 时，新建旅程会优先生成同款小新新画风封面，并显示生成进度；没有 Key 或生成失败时自动使用默认封面。Key 不会提交到 GitHub。")}
         Section{Button{Task{await validate()}}label:{if validating{HStack{ProgressView();Text("正在验证图片模型权限…")}}else{Label("验证 API Key 与图片模型",systemImage:"checkmark.shield")}}.disabled(!hasSavedKey||validating);Link("打开 OpenAI API Keys 页面",destination:URL(string:"https://platform.openai.com/api-keys")!);if let message{Text(message).foregroundStyle(Pastel.secondary).textSelection(.enabled)}}
         if hasSavedKey{Section{Button("移除 API Key",role:.destructive){SecureStore.removeOpenAIKey();hasSavedKey=false;apiKey="";message="已移除，之后将使用默认封面。"}}}
     }.navigationTitle("OpenAI 图片生成").navigationBarTitleDisplayMode(.inline).toolbar{ToolbarItem(placement:.cancellationAction){Button("关闭"){dismiss()}};ToolbarItem(placement:.confirmationAction){Button("保存"){save()}.disabled(apiKey.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}}.onAppear{hasSavedKey=SecureStore.openAIKey() != nil}}

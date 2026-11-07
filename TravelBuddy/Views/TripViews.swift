@@ -9,15 +9,15 @@ struct TripListView: View {
     @State private var showingEditor=false
     @State private var filter=0
     @State private var deleting:Trip?
-    var filtered:[Trip] { trips.filter { filter == 0 || (filter == 1 ? $0.endDate >= Date.now.startOfDay : $0.endDate < Date.now.startOfDay) } }
+    var filtered:[Trip] { let today=Date.now.startOfDay;return trips.filter { filter == 0 || (filter == 1 ? $0.startDate.startOfDay >= today : $0.endDate.startOfDay < today) } }
     var body: some View {
         ZStack(alignment:.bottomTrailing) {
             Pastel.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment:.leading,spacing:18) {
-                    HStack { VStack(alignment:.leading,spacing:2) { Text("我的旅行").font(.largeTitle.bold()).foregroundStyle(Pastel.text); Text("和小桃一起，把期待装进行李箱").font(.subheadline).foregroundStyle(Pastel.secondary) }; Spacer(); Image("pigMap").resizable().scaledToFit().frame(width:76,height:76) }
-                    Picker("旅行筛选",selection:$filter) { Text("全部").tag(0);Text("待出发").tag(1);Text("回忆").tag(2) }.pickerStyle(.segmented)
-                    if filtered.isEmpty { EmptyStateView(title:"还没有旅行",message:"先选一个想去的地方，小桃会陪你慢慢计划。",buttonTitle:"创建旅行",action:{showingEditor=true}) }
+                    HStack { VStack(alignment:.leading,spacing:2) { Text("我的旅行").font(.largeTitle.bold()).foregroundStyle(Pastel.text); Text("和小新新一起，把期待装进行李箱").font(.subheadline).foregroundStyle(Pastel.secondary) }; Spacer(); Image("pigMap").resizable().scaledToFit().frame(width:76,height:76) }
+                    TripFilterBar(selection:$filter)
+                    if filtered.isEmpty { EmptyStateView(title:"还没有旅行",message:"先选一个想去的地方，小新新会陪你慢慢计划。",buttonTitle:"创建旅行",action:{showingEditor=true}) }
                     LazyVGrid(columns:[GridItem(.adaptive(minimum:320,maximum:480),spacing:18)],spacing:18) {
                         ForEach(filtered) { trip in NavigationLink { TripOverviewView(trip:trip) } label:{ TravelCard(trip:trip) }.buttonStyle(.plain).contextMenu { Button(role:.destructive) { deleting=trip } label:{ Label("删除",systemImage:"trash") } } }
                     }
@@ -26,6 +26,12 @@ struct TripListView: View {
             RoundedIconButton(icon:"plus",color:Pastel.yellow) { showingEditor=true }.padding(22)
         }.toolbar(.hidden,for:.navigationBar).sheet(isPresented:$showingEditor) { NavigationStack { TripEditorView() } }.confirmationDialog("要删除“\(deleting?.title ?? "这趟旅行")”吗？",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}}),titleVisibility:.visible){Button("删除旅行",role:.destructive){if let deleting{context.delete(deleting);try? context.save()};deleting=nil};Button("取消",role:.cancel){deleting=nil}}message:{Text("相关日程、餐食和本地记录也会被删除，此操作无法撤销。")}
     }
+}
+
+private struct TripFilterBar:View{
+    @Binding var selection:Int
+    private let titles=["全部","待出发","回忆"]
+    var body:some View{HStack(spacing:0){ForEach(titles.indices,id:\.self){index in Button{selection=index}label:{Text(titles[index]).font(.subheadline.weight(.semibold)).foregroundStyle(Pastel.text).frame(maxWidth:.infinity).padding(.vertical,10).background(selection==index ? Color.white:Color.clear).clipShape(RoundedRectangle(cornerRadius:11))}.buttonStyle(.plain)}}.padding(3).background(Pastel.secondary.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius:14)).contentShape(Rectangle()).zIndex(2)}
 }
 
 struct TripEditorView: View {
@@ -65,7 +71,7 @@ struct TripEditorView: View {
                     coverPreview.frame(height:170).frame(maxWidth:.infinity)
                     if isGenerating {
                         Rectangle().fill(.black.opacity(0.36))
-                        VStack(spacing:10){ProgressView().tint(.white).scaleEffect(1.2);Text("正在为“\(destination)”生成小桃旅行封面…").font(.subheadline.weight(.semibold)).foregroundStyle(.white).multilineTextAlignment(.center)}.padding()
+                        VStack(spacing:10){ProgressView().tint(.white).scaleEffect(1.2);Text("正在为“\(destination)”生成小新新旅行封面…").font(.subheadline.weight(.semibold)).foregroundStyle(.white).multilineTextAlignment(.center)}.padding()
                     }
                 }.frame(height:170).clipShape(RoundedRectangle(cornerRadius:18)).listRowInsets(EdgeInsets())
                 if SecureStore.openAIKey() != nil {
@@ -126,7 +132,7 @@ struct TripEditorView: View {
         isGenerating=true;generationMessage=nil;defer{isGenerating=false}
         do {
             imageData=try await OpenAIImageService().generateTravelCover(destination:destination)
-            coverAttributionName="OpenAI · 小桃原创生成";coverAttributionURL=nil
+            coverAttributionName="OpenAI · 小新新原创生成";coverAttributionURL=nil
             generationMessage="生成完成，已设为旅行封面。"
         } catch {
             generationMessage="生成失败：\(error.localizedDescription)"
